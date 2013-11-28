@@ -1,0 +1,22 @@
+{% capture jbcache %}
+  <!--
+  - Dynamically set liquid variables for working with URLs/paths
+  -->
+  {% if site.heljoy.setup.provider == "custom" %}
+    {% include custom/setup %}
+  {% else %}
+    {% if site.safe and site.heljoy.BASE_PATH and site.heljoy.BASE_PATH != '' %}
+      {% assign BASE_PATH = site.heljoy.BASE_PATH %}
+      {% assign HOME_PATH = site.heljoy.BASE_PATH %}
+    {% else %}
+      {% assign BASE_PATH = nil %}
+      {% assign HOME_PATH = "/" %}
+    {% endif %}
+
+    {% if site.heljoy.ASSET_PATH %}
+      {% assign ASSET_PATH = site.heljoy.ASSET_PATH %}
+    {% else %}
+      {% capture ASSET_PATH %}{{ BASE_PATH }}/_includes/themes/{{ page.theme.name }}{% endcapture %}
+    {% endif %}  
+  {% endif %}
+{% endcapture %}{% assign jbcache = nil %}

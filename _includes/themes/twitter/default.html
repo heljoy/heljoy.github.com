@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>{{ page.title }}</title>
+    {% if page.keywords %}<meta name="keywords" content="{{ page.keywords }}">{% endif %}
+    {% if page.description %}<meta name="description" content="{{ page.description }}">{% endif %}
+    <meta name="author" content="{{ site.author.name }}">
+
+    <!-- Enable responsive viewport -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+    <!--[if lt IE 9]>
+    <script src="http://html5shim.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+
+    <!-- Le styles -->
+    <link href="{{ BASE_PATH }}/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ BASE_PATH }}/css/font-awesome.min.css" rel="stylesheet">
+    <link href="{{ BASE_PATH }}/css/typo.css" rel="stylesheet">
+    <link href="{{ BASE_PATH }}/css/style.css?body=1" rel="stylesheet" type="text/css" media="all">
+    <link href="{{ BASE_PATH }}/css/solarized.css" rel="stylesheet" type="text/css" media="all">
+    <link href="{{ BASE_PATH }}/css/datatables-bootstrap.css" rel="stylesheet">
+    <link href="{{ BASE_PATH }}/css/heljoy.css" rel="stylesheet">
+
+    <!-- javascript files -->
+    <script type="text/javascript" src="/js/jquery-2.0.0.min.js"></script>
+    <script src="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.2/js/bootstrap.min.js"></script>
+    <script type="text/javascript" src="/js/jquery.dataTables.min.js"></script>
+    <script type="text/javascript" src="/js/datatables-bootstrap.js"></script>
+    <script type="text/javascript" src="/js/heljoy.js"></script>
+
+    <!-- Le fav and touch icons -->
+    <!-- Update these with your own images
+    <link rel="shortcut icon" href="images/favicon.ico">
+    <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
+    <link rel="apple-touch-icon" sizes="72x72" href="images/apple-touch-icon-72x72.png">
+    <link rel="apple-touch-icon" sizes="114x114" href="images/apple-touch-icon-114x114.png">
+    -->
+
+    <script type="text/javascript">
+    </script>
+
+  </head>
+
+  <body id="scroll-pane" data-spy="scroll" data-target="#time-list-nav">
+    <div class="wrapper">
+      <!-- 导航条 -->
+      <div class="navbar">
+        <div class="navbar-inner row-fluid">
+          <div class="span2">
+          </div>
+          <div class="span8">
+            <a class="brand" href="{{ HOME_PATH }}">
+              <span class="site-author"> {{ site.author.name }} </span>
+              <span class="site-title"> * {{ site.title }} * </span>
+            </a>
+            <ul class="nav">
+              {% assign pages_list = site.pages %}
+              {% assign group = 'navigation' %}
+              {% include heljoy/pages_list %}
+            </ul>
+          </div>
+          <div class="span2">
+          </div>
+        </div>
+      </div>
+
+      <!-- 正文 -->
+      {{ content }}
+
+    <span> alsdkfadl</span>
+    </div>
+    <!-- 底部声明 -->
+    <div class="row-fluid bottom">
+      <div class="span2">
+      </div>
+      <div class="span8 text-center">
+	      <p>&copy; {{ site.author.name }} 2013
+	      with help from <a href="http://jekyllbootstrap.com" target="_blank" title="The Definitive Jekyll Blogging Framework">Jekyll Bootstrap</a>
+	      and <a href="http://twitter.github.com/bootstrap/" target="_blank">Twitter Bootstrap</a>
+	      </p>
+      </div>
+      <div class="span2">
+      </div>
+    </div>
+
+    {% include heljoy/analytics %}
+  </body>
+</html>
