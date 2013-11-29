@@ -1,5 +1,5 @@
 /* =============================================================================
-#     FileName: codepiano.css
+#     FileName: heljoy.css
 #         Desc: stylesheet for blog
 #       Author: codepiano
 #        Email: anyexingchen999@qq.com
@@ -47,7 +47,7 @@ html, body, div.wrapper {
 }
 
 /* font-awesome post信息按钮样式 */
-.icon-folder-open, .icon-tags, .icon-calendar {
+.icon-th-list, .icon-tags, .icon-time {
   color:#A84365;
 }
 

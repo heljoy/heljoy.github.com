@@ -1,0 +1,23 @@
+---
+layout: page
+title: Archive
+header: Posts By Time
+group: navigation
+---
+{% include heljoy/setup %}
+
+<div class="row-fluid typo">
+  <div class="span9" >
+    {% assign posts_collate = site.posts %}  
+    {% include heljoy/posts_collate %}
+  </div>
+  <div id="time-list-nav" class="span3">
+    <ul id="time-list-ul" class="nav nav-tabs nav-stacked time-list affix">
+      {% assign posts_collate = site.posts %}  
+      {% include heljoy/posts_time %}
+    </ul>
+  </div>
+</div>
+
+
+

@@ -1,12 +1,8 @@
-{% if site.safe and site.codepiano.analytics.provider and page.codepiano.analytics != false %}
+{% if site.safe and site.heljoy.analytics.provider and page.heljoy.analytics != false %}
 
-{% case site.codepiano.analytics.provider %}
+{% case site.heljoy.analytics.provider %}
 {% when "google" %}
-  {% include codepiano/analytics-providers/google %}
-{% when "getclicky" %}
-  {% include codepiano/analytics-providers/getclicky %}
-{% when "mixpanel" %}
-  {% include codepiano/analytics-providers/mixpanel %}
+  {% include heljoy/analytics-providers/google %}
 {% when "custom" %}
   {% include custom/analytics %}
 {% endcase %}

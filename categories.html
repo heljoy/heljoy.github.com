@@ -1,0 +1,31 @@
+---
+layout: page
+title: Categories
+header: Posts By Category
+group: navigation
+---
+{% include heljoy/setup %}
+<div class="tabbable tabs-right row-fluid">
+  <ul class="nav nav-tabs" id="categories-nav">
+    {% for category in site.categories %}
+      <li><a href="#{{ category[0]}}-ref" data-toggle="tab">{{ category[0] | join: "/" }}</a></li>
+    {% endfor %}
+  </ul>
+
+  <div class="tab-content">
+    {% for category in site.categories %} 
+    <div class="tab-pane" id="{{ category[0] }}-ref">
+      <ul class="posts-list">
+	{% for post in category[1] %}
+	<li><span class="category-archive">
+  	      <a href="{{ BASE_PATH }}{{ post.url }}" class="post-url">{{ post.title }}</a>
+	    </span>
+	    <span class="post-right-info pull-right">{{ post.date | date_to_string }} </span>
+	</li>
+	{% endfor %}
+      </ul>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+

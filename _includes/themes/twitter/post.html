@@ -1,0 +1,51 @@
+<div class="row-fluid post-full typo">
+  <div class="span2"></div>
+
+  <div class="span8 typo">
+    <h2>{{ page.title }} {% if page.tagline %}<small>{{page.tagline}}</small>{% endif %}</h2>
+
+    <div class="content">
+      {{ content }}
+    </div>
+
+    <hr>
+    <!-- div class="post_info" -->
+      <ul class="breadcrumb">
+	<li><i class="icon-time"></i><span class="divider">&nbsp;</span></li>
+	<li><span>{{ page.date | date_to_string }}</span></li>
+        {% unless page.category == empty %}
+	<li><span class="divider">|</span></li>
+        <li><i class="icon-th-list"></i><span class="divider">&nbsp;</span></li>
+	<li><a href="{{ BASE_PATH }}{{ site.heljoy.categories_path}}#{{ page.category }}-ref">{{ page.category }}</a></li>
+        {% endunless %}  
+        {% unless page.tags == empty %}
+	<li><span class="divider">|</span></li>
+        <li><i class="icon-tags"></i><span class="divider">&nbsp;</span></li>
+        {% assign tags_list = page.tags %}
+        {% include heljoy/tags_list %}
+	<li><span class="divider">|</span></li>
+        {% endunless %}  
+      </ul>
+    <!-- /div -->
+
+    <div class="pagination pull-right">
+      <ul>
+        {% if page.previous %}
+        <li class="prev"><a href="{{ BASE_PATH }}{{ page.previous.url }}" title="{{ page.previous.title }}">&larr; Previous</a></li>
+        {% else %}
+        <li class="prev disabled"><a>&larr; Previous</a></li>
+        {% endif %}
+        <li><a href="{{ BASE_PATH }}{{ site.heljoy.archive_path }}">Archive</a></li>
+        {% if page.next %}
+        <li class="next"><a href="{{ BASE_PATH }}{{ page.next.url }}" title="{{ page.next.title }}">Next &rarr;</a></li>
+        {% else %}
+        <li class="next disabled"><a>Next &rarr;</a>
+        {% endif %}
+      </ul>
+    </div>
+    <br />
+    <div id="comment-hook"></div>
+    {% include heljoy/comments %}
+  </div>
+  <div class="span2"></div>
+</div>

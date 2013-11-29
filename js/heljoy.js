@@ -1,5 +1,5 @@
 /* =============================================================================
-#     FileName: codepiano.js
+#     FileName: heljoy.js
 #         Desc: javascript for blog
 #       Author: codepiano
 #        Email: anyexingchen999@qq.com
@@ -55,12 +55,6 @@
   });
 
 }(window.jQuery);
-
-/* 切换技术支持列表的样式 */
-function toggleSupport(){
-  $('#support').toggleClass('dispear').toggleClass('show');
-  return false;
-}
 
 /* datatables设置 */
 datatablesConfig = {
