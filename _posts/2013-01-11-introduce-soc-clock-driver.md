@@ -7,40 +7,55 @@ tags: [linux, kernel, clock, driver]
 ---
 {% include heljoy/setup %}
 
-本文主要介绍SOC片上时钟系统，对应到SPEC文档时钟部分，并不涉及系统的计时、定时等，这部分内容可参考[这篇文章](http://elinux.org/Kernel_Timer_Systems)。本文所提到的时钟是SOC片上设备工作的时钟，主要介绍时钟相关概念、硬件、核心时钟系统的结构与驱动、部分动态调频的原理。
+<p class="paragraph">
+本文主要介绍SOC片上时钟系统，对应到SPEC文档时钟部分，并不涉及系统的计时、定时等，这部分内容可参考<a href="http://elinux.org/Kernel_Timer_Systems">这篇文章</a>。本文所提到的时钟是SOC片上设备工作的时钟，主要介绍时钟相关概念、硬件、核心时钟系统的结构与驱动、部分动态调频的原理。
+</p>
 
-<!-- more start -->
+<p class="paragraph">
 时钟是设备工作的脉搏，系统各部件正常的工作离不开合适的时钟。嵌入式平台上为降低系统功耗，部分模块的工作电压与时钟都是可以动态调整，并且可单独关闭某一模块的时钟以节省电源，为屏蔽时钟调整寄存器操作细节，方便时钟状态调整，统一访问接口，三星独立与LINUX时钟驱动，开发了平台相关的驱动程序，这里针对EXYNOS4412平台时钟系统，涉及到驱动框架和实现细节。
+</p>
 
+<!-- more -->
 
 ## 时钟相关硬件
 
-时钟是一种有规律的电信号，具有特定的周期、频率，最常见的时钟信号的方波、正弦波等，这个是硬件晶振具有的特性。而系统中各模块工作于不同频率，为每个模块单独配置一个晶振显然不现实，并且有些模块可工作在多种频率模式，因此嵌入式时钟系统常具有动态调整频率功能，具体来说就是多路选择和分频，其时钟系统与树结构类似，拥有一个或几个时钟源，经过`PLL`电路，使用`MUX`、`DIV`器件为各模块提供多种工作频率。
+<p class="paragraph">
+时钟是一种有规律的电信号，具有特定的周期、频率，最常见的时钟信号的方波、正弦波等，这个是硬件晶振具有的特性。而系统中各模块工作于不同频率，为每个模块单独配置一个晶振显然不现实，并且有些模块可工作在多种频率模式，因此嵌入式时钟系统常具有动态调整频率功能，具体来说就是多路选择和分频，其时钟系统与树结构类似，拥有一个或几个时钟源，经过<em>PLL</em>电路，使用<em>MUX</em>、<em>DIV</em>器件为各模块提供多种工作频率。
+</p>
 
-- `PLL`：锁相环电路，[百度百科](http://baike.baidu.com/view/188802.htm)上有详细的解释，具体就是有反馈机制的电路，可调整部分参数达到输入与输出动态变化的目的，在SPEC文档上有调整PLL相关的寄存器说明，其中最重要的参数为PMS，确定输出频率与输入频率的关系，并有参数的推荐配置。
+- *PLL*：锁相环电路，[百度百科](http://baike.baidu.com/view/188802.htm)上有详细的解释，具体就是有反馈机制的电路，可调整部分参数达到输入与输出动态变化的目的，在SPEC文档上有调整PLL相关的寄存器说明，其中最重要的参数为PMS，确定输出频率与输入频率的关系，并有参数的推荐配置。
 
-- `MUX`：多路选择电路，从上行多路时钟选择一路输出，必须有一路输出，不能不选，也是通过寄存器配置。另外`MUX`分为glitch-free和normal两种，只在时钟切换时有区别。
+- *MUX*：多路选择电路，从上行多路时钟选择一路输出，必须有一路输出，不能不选，也是通过寄存器配置。另外*MUX*分为glitch-free和normal两种，只在时钟切换时有区别。
 
-- `DIV`：分频电路，将上行时钟分频处理后输出，经过电路的时钟频率为离散值
+- *DIV*：分频电路，将上行时钟分频处理后输出， 分频参数为整数，所以经过电路的时钟频率为几个离散值
 
-- `GATE`：开关电路，截断上行时钟到下行设备的输出，一般针对终端设备，不要关闭下行有多个时钟或设备的时钟
+- *GATE*：开关电路，截断上行时钟到下行设备的输出，一般针对终端设备，不要关闭下行有多个时钟或设备的时钟
 
 ## 片上设备时钟
 
+<p class="paragraph">
 一般SOC芯片都需要外部提供一个或几个稳定频率的时钟源，时钟源经过片上时钟管理系统最后提供给片上的设备，这部分的硬件连接图一般没有，但SPEC文档会介绍时钟管理系统对时钟源的处理，片上设备连接到哪个时钟域下(一般不会详细列出每个设备的时钟路线，只会给出哪些设备属于哪个时钟管理)，以下给出大概的时钟路线图。
+</p>
 
-{% highlight bash %}
+<div class="highlight">
+<pre>
      other clock ----------+                              +----> {GATE} DEVICE0
      other clock --------+ |                              |----> {GATE} DEVICE1
                          V V                              |----> {GATE} DEVICE2
-clock_src ------>[PLL] ------->[MUX] ------->[DIV] ------------> {GATE} DEVICE3
-{% endhighlight %}
+clock_src ------>[PLL] ------->[MUX] ------->[DIV] ------------> {GATE} DEVICE3 
+</pre>
+</div>
 
-时钟源`clock_src`之后到`DEVICE`之前都属于时钟管理系统，从时钟源到设备通常会经过多个`MUX`、`DIV`器件，具体要结合SPEC文档时钟管理器部分寄存器描述。弄清楚上述关系后就可以直接访问寄存器控制时钟系统，适用于没有操作系统的环境，但linux系统屏蔽了这些硬件细节，为上层驱动提供统一的访问接口，下面具体描述统一接口到寄存器操作的映射关系，这也是时钟驱动框架的核心部分。
+<p class="paragraph">
+时钟源<em>clock_src</em>之后到<em>DEVICE</em>之前都属于时钟管理系统，从时钟源到设备通常会经过多个<em>MUX</em>、<em>DIV</em>器件，具体要结合SPEC文档时钟管理器部分寄存器描述。弄清楚上述关系后就可以直接访问寄存器控制时钟系统，适用于没有操作系统的环境，但linux系统屏蔽了这些硬件细节，为上层驱动提供统一的访问接口，下面具体描述统一接口到寄存器操作的映射关系，这也是时钟驱动框架的核心部分。
+</p>
 
 ## 系统中时钟的表示
 
+<p class="paragraph">
 时钟驱动中关键要表达以下几个概念：时钟、时钟源、设置/获取频率等操作。
+</p>
+
 {% highlight c %}
 ## arch/arm/plat-samsung/include/plat/clock.h
 struct clk {
@@ -63,7 +78,10 @@ struct clk {
 };
 {% endhighlight %}
 
+<p class="paragraph">
 看了这个结构心里还不会太紧张，成员不多，且大分部类型确定，起作用的也只有几个，唯一一个不明白的就是clk_ops了。
+</p>
+
 {% highlight c %}
 ## arch/arm/plat-samsung/include/plat/clock.h
 struct clk_ops {
@@ -75,7 +93,9 @@ struct clk_ops {
 }; 
 {% endhighlight %}
 
-这个结构也没有我们想像的复杂，需要解释的是时钟是由`MUX`、`DIV`等出来的，并不是你设置一个频率，时钟就能以这个频率工作，通过设置`MUX`、`DIV`，时钟有一个离散工作频率范围。`MUX`是多选一的选择器，每个上行时钟都可能成为下行时钟的父时钟，下行时钟与父时钟的频率一致，对于`DIV`分频器，下行时钟只有一个父时钟，下行时钟与父时钟频率关系由分频器控制。
+<p class="paragraph">
+这个结构也没有我们想像的复杂，需要解释的是时钟是由<em>MUX</em>、<em>DIV</em>等出来的，并不是你设置一个频率，时钟就能以这个频率工作，通过设置<em>MUX</em>、<em>DIV</em>，时钟有一个离散工作频率范围。<em>MUX</em>是多选一的选择器，每个上行时钟都可能成为下行时钟的父时钟，下行时钟与父时钟的频率一致，对于<em>DIV</em>分频器，下行时钟只有一个父时钟，下行时钟与父时钟频率关系由分频器控制。
+</p>
 
 {% highlight c %}
 ## arch/arm/plat-samsung/include/plat/clock-clksrc.h
@@ -99,12 +119,18 @@ struct clksrc_reg {
         unsigned short          size;
 };
 {% endhighlight %}
-时钟源的表示，用来描述`MUX`、`DIV`器件这类连接有多个时钟，通过寄存器位控制上下行时钟关系。`MUX`的`sources`一般包含多个时钟，寄存器`reg_src`表示设置哪个为父时钟的寄存器位，`DIV`不用设置`sources`，使用`reg_div`设置分频参数。这里寄存器信息只给出了基地址，偏移量和位宽，位段内包含的信息由SPEC文档解释，一般所有`MUX`的格式统一，所有`DIV`的格式也统一，故可以使用上面的抽象。
+
+<p class="paragraph">
+时钟源的表示，用来描述<em>MUX</em>、<em>DIV</em>器件这类连接有多个时钟，通过寄存器位控制上下行时钟关系。<em>MUX</em>的<em>sources</em>一般包含多个时钟，寄存器<em>reg_src</em>表示设置哪个为父时钟的寄存器位，<em>DIV</em>不用设置<em>sources</em>，使用<em>reg_div</em>设置分频参数。这里寄存器信息只给出了基地址，偏移量和位宽，位段内包含的信息由SPEC文档解释，一般所有<em>MUX</em>的格式统一，所有<em>DIV</em>的格式也统一，故可以使用上面的抽象。
+</p>
 
 
 ## 时钟注册接口
 
+<p class="paragraph">
 这里分两类注册，一种时钟就是单个模块使用，有些可以关闭，且关闭了不会影响其它模块工作；另一类就是生成上面一类时钟的时钟，由选择器、分频器组成，可以说是生成第一种时钟的时钟，为时钟源，对应到上节中的两个结构。
+</p>
+
 {% highlight c %}
 ## arch/arm/plat-samsung/clock.c
 int s3c24xx_register_clock(struct clk *clk)
@@ -130,7 +156,10 @@ int s3c24xx_register_clock(struct clk *clk)
         return 0;
 }
 {% endhighlight %}
+
+<p class="paragraph">
 注册时钟的接口比较简单，把时钟添加到全局时钟链表就可以了，与gpio驱动中gpio_desc数组有类似的作用，相比第二类时钟要复杂一些。
+</p>
 
 {% highlight c %}
 void __init s3c_register_clksrc(struct clksrc_clk *clksrc, int size)
@@ -170,7 +199,10 @@ void __init s3c_register_clksrc(struct clksrc_clk *clksrc, int size)
 }
 {% endhighlight %}
 
+<p class="paragraph">
 注册时钟源要有选择或分频寄存器地址，也就是这个时钟源是可配置的，接口配置时钟源时主要是根据clk_reg设置寄存器，后面应用时再具体介绍。时钟源添加到系统时会进行初始化，这里涉及到寄存器操作。
+</p>
+
 {% highlight c %}
 void __init_or_cpufreq s3c_set_clksrc(struct clksrc_clk *clk, bool announce)
 {
@@ -203,7 +235,10 @@ void __init_or_cpufreq s3c_set_clksrc(struct clksrc_clk *clk, bool announce)
                        clk_get_rate(&clk->clk));
 }
 {% endhighlight %}
+
+<p class="paragraph">
 初始化主要是设置时钟的父结点，利用选择器寄存器reg_src，从父结点列表中获取当前为选择器提供时钟的父结点，分频率只有一个父结点。
+</p>
 
 ## 时钟驱动框架结构
 
@@ -213,8 +248,12 @@ EXYNOS4412平台所有的时钟都从以下几个时钟派生：
 - XXTI：不知道做什么用的，我们没有使用这个
 - XUSBXTI：USB PHY模块使用，同时也用于系统PLL，24MHZ
 
-主要是使用到了XUSBXTI作为时钟来源，为保证系统工作频率稳定，XUSBXTI分别输入到不同的PLL电路，经常见到的有APLL、EPLL、MPLL、VPLL，其主要针对SOC四大部分，XUSBXTI与PLL经过`MUX`产生SCLK_XPLL，其中APLL要分频输出SCLK_APLL，具体派生结构如下：
-{% highlight bash %}
+<p class="paragraph">
+主要是使用到了XUSBXTI作为时钟来源，为保证系统工作频率稳定，XUSBXTI分别输入到不同的PLL电路，经常见到的有APLL、EPLL、MPLL、VPLL，其主要针对SOC四大部分，XUSBXTI与PLL经过<em>MUX</em>产生SCLK_XPLL，其中APLL要分频输出SCLK_APLL，具体派生结构如下：
+</p>
+
+<div class="highlight">
+<pre>
                               |\               +-----------+
 xusbxit--+------------------->| | MUX(APLL)    |           |
          |   +--------+       | |------------->| DIV(APLL) |----------->SCLK_APLL
@@ -229,7 +268,8 @@ xusbxit--+------------------->| | MUX(APLL)    |           |
              +------------+   | |
                               |/
          
-{% endhighlight %}
+</pre>
+</div>
 
 上述5个时钟输入源，分别是xusbxit、apll_fout、epll_fout、mpll_fout、vpll_fout，根据上图建立驱动使用的模型：
 {% highlight c %}
@@ -283,11 +323,16 @@ static struct clksrc_clk exynos4_clk_mout_epll = {
 ...
 {% endhighlight %}
 
+<p class="paragraph">
 上面给出了建立sclk_apll和sclk_epll(mout_epll)时钟模型，其余PLL时钟模型相似。SOC上很多设备使用的时钟都是这几个PLL派生来，结合芯片datasheet，从代码中能清楚看到这种派生关系。
+</p>
 
 ## 4. 时钟驱动接口实现
 
-对时钟的操作首先都要获取时钟，由`get_clk`实现，由linux系统clk驱动完成，使用lookup成员，细节不作介绍。获取时钟后就可设置时钟频率或关闭时钟了。
+<p class="paragraph">
+对时钟的操作首先都要获取时钟，由<em>get_clk</em>实现，由linux系统clk驱动完成，使用lookup成员，细节不作介绍。获取时钟后就可设置时钟频率或关闭时钟了。
+</p>
+
 {% highlight c %}
 ## drivers/clk/clk.c
 unsigned long clk_get_rate(struct clk *clk)
@@ -322,7 +367,9 @@ out:
 }
 {% endhighlight %}
 
-获取时钟频率比较简单，在clk结构中有保存时钟频率。设置频率的接口要复杂得多，如果操作的为`DIV`，根据父时钟频率调整分频参数，找出一个与目标频率最接近的分频参数即可，如果操作的是`MUX`，可选的频率集合为父时钟频率集合，查找最接近即可。
+<p class="paragraph">
+获取时钟频率比较简单，在clk结构中有保存时钟频率。设置频率的接口要复杂得多，如果操作的为<em>DIV</em>，根据父时钟频率调整分频参数，找出一个与目标频率最接近的分频参数即可，如果操作的是<em>MUX</em>，可选的频率集合为父时钟频率集合，查找最接近即可。
+</p>
 
 {% highlight c %}
 ## arch/arm/plat-samsung/clock.c
@@ -353,7 +400,10 @@ int clk_set_rate(struct clk *clk, unsigned long rate)
 }
 {% endhighlight %}
 
-这里就是调用clk设备的操作接口，第一节介绍注册时赋值。（`DIV`器件才有改变频率接口，`MUX`器件才有改变父结点接口，clk设备只有使能接口），时钟操作接口，结合时钟源的定义可关联到具体接口。
+<p class="paragraph">
+这里就是调用clk设备的操作接口，第一节介绍注册时赋值。（<em>DIV</em>器件才有改变频率接口，<em>MUX</em>器件才有改变父结点接口，clk设备只有使能接口），时钟操作接口，结合时钟源的定义可关联到具体接口。
+</p>
+
 {% highlight c %}
 static struct clk_ops clksrc_ops = {
         .set_parent     = s3c_setparent_clksrc,
@@ -374,7 +424,8 @@ static struct clk_ops clksrc_ops_nosrc = {
         .round_rate     = s3c_roundrate_clksrc,
 };
 {% endhighlight %}
-改变时钟的频率clk_set_rate接口会调用到s3c_setrate_clksrc。
+
+改变时钟的频率clk\_set\_rate接口会调用到s3c\_setrate\_clksrc。
 
 {% highlight c %}
 static int s3c_setrate_clksrc(struct clk *clk, unsigned long rate)
@@ -406,6 +457,6 @@ static int s3c_setrate_clksrc(struct clk *clk, unsigned long rate)
 
 ## 总结
 
+<p class="paragraph">
 这样基础性质的驱动是系统能正常工作的保证，修改时需要认真核对SPEC文档，在移植前并不是所有的时钟都已经正确，最好是代码与文档对照来看，去掉没有的时钟，添加必须使用的时钟。有时候很多时钟的寄存器从来不会被改动，可以不用添加到系统，但为框架树形结构完整以及查找问题方便，还是建议统一都写上，从clock_tree能完整的掌握系统运行状态。
-
-<!-- more end -->
+</p>
