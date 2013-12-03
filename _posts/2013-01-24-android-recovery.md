@@ -7,16 +7,22 @@ tags: [android, recovery]
 ---
 {% include heljoy/setup %}
 
-Android系统的Recovery模式是独立于正常使用系统的另一种操作环境，其使用精简的内核与工具集，不提供控制台SHELL环境，仅运行recovery可执行程序完成升级、恢复出厂设置等任务。为提高用户体验，我们在Recovery模式下增加了触摸功能，配合单选框、按钮图标的显示，实现触摸事件驱动的Recovery图形界面环境，取消按键菜单项模式。关于Recovery模式的详细介绍可以参考[这里](http://blog.csdn.net/tronteng/article/details/7590326)转载的文件。
+<p class="paragraph">
+Android系统的Recovery模式是独立于正常使用系统的另一种操作环境，其使用精简的内核与工具集，通常不提供控制台SHELL环境，仅运行recovery可执行程序完成升级、恢复出厂设置等任务。由于精简系统中不包含库文件，各种执行程序必须静态编译后加入系统。为提高用户体验，我们在Recovery模式下增加了触摸功能，配合单选框、按钮图标的显示，实现触摸事件驱动的Recovery图形界面环境，取消按键菜单项模式。关于Recovery模式的详细介绍可以参考[这里](http://blog.csdn.net/tronteng/article/details/7590326)转载的文章。
+</p>
 
-<!-- more start -->
+<!-- more -->
 
+<p class="paragraph">
 原生Android系统Recovery模式只支持按键消息，显示界面显示当前可供选择的操作项，使用音量加减键移动选取项，电源键确认选取。我们将升级操作全部使用图形界面完成，单选框选取任务，按钮确认或取消操作，进度条显示操作进度，并提供错误处理界面，界面的各元素都使用图标文件显示，比如单选框选取与未选取状态加载不同的图标文件。本文并不涉及到很多图形显示的细节问题，只介绍在Recovery模式下添加触摸消息支持，包括触摸点到单选框的选取，触摸滑动时按钮的效果以及触摸消息到按钮消息等内容，适合基于触摸驱动的升级模式两次开发。
+</p>
 
 
 ## 添加内核触摸事件接收支持
 
+<p class="paragraph">
 如果用于recovery模式的内核不提供触摸驱动支持，下面是没办法继续进行的。原生系统在bootable/recovery/minui目录的events.c文件中实现按键消息获取分发操作，使用poll方式等待所有按键消息，有按键消息时回调通知处理程序，具体的代码不做展示。添加触摸事件只需要在初始化时额外添加触摸输入设备到poll等待的设备池，这样有触摸消息时与按键一样回调通知处理，[这篇文章](http://blog.csdn.net/fe421504975/article/details/8272126)介绍得比较详细，但其并不适应我们的需求。
+</p>
 
 {% highlight c %}
 int ev_init(ev_callback input_cb, void *data)
@@ -32,11 +38,16 @@ int ev_init(ev_callback input_cb, void *data)
 ...
 }
 {% endhighlight %}
+
+<p class="paragraph">
 上述将触摸设备添加到监控数组中，同时还需要获取触摸的边界值，可辅助触摸坐标到LCD显示坐标转换。
+</p>
 
 ## 添加触摸消息处理虚函数
 
+<p class="paragraph">
 谷歌在recovery中使用一个抽象基类实现按键消息的接收，其单独创建一个消息接收线程，使用minui中的辅助函数实现消息队列功能，应用只需要调用类成员waitkey即可阻塞等待按键消息，屏蔽了底层设备消息读取与队列管理等。添加触摸输入设备支持后ev_get_input会读取到触摸消息，在基类的消息回调函数中添加`EV_SYN`和`EV_ABS`支持，由于从触摸事件中只能获取坐标点等信息，要转换为按钮消息需要图形界面信息，并且在按钮上滑动需要更换图标文件以显示不同的按钮状态，因此使用虚函数的方式，在其子类中有足够的坐标、绘图功能时再实现触摸消息的处理。
+</p>
 
 {% highlight c %}
 int RecoveryUI::input_callback(int fd, short revents, void* data)
@@ -54,7 +65,10 @@ int RecoveryUI::input_callback(int fd, short revents, void* data)
 ...
 }
 {% endhighlight %}
+
+<p class="paragraph">
 有触摸消息时调用触摸处理函数，其结合界面元素与触摸动作，如果是正确的按钮点击则返回按钮消息，与按键流程相同进入队列返回给等待消息的应用。提供单选框是否选取状态接口用于开始操作前获取任务列表。
+</p>
 
 {% highlight c %}
 class RecoveryUI {
@@ -68,7 +82,9 @@ class RecoveryUI {
 
 ## 触摸消息处理
 
-内核关于多点触摸支持两种[协议](http://www.kernel.org/doc/Documentation/input/multi-touch-protocol.txt)，一次触摸事件会上报多次消息，包括X坐标、Y坐标、多点触摸ID、触摸面宽度、压力等，每次报告完一组数据会追加一个SYN同步消息。这里需要反复调试，而且A、B两种协议上报消息方式不一样，处理也有差异，下面以伪代码的方式给出主要处理思路。
+<p class="paragraph">
+内核关于多点触摸支持两种[协议](http://www.kernel.org/doc/Documentation/input/multi-touch-protocol.txt)，一次触摸事件会上报很多消息，包括X坐标、Y坐标、多点触摸ID、触摸面宽度、压力等，每次报告完一组数据会追加一个SYN同步消息。这里需要反复调试，而且A、B两种协议上报消息方式不一样，处理也有差异，下面以伪代码的方式给出主要处理思路。
+</p>
 
 {% highlight c %}
 int ScreenRecoveryUI::handle_touch_input(struct input_event *ev)
@@ -102,5 +118,3 @@ int ScreenRecoveryUI::handle_touch_input(struct input_event *ev)
 {% endhighlight %}
 <br />
 **PS:在`screen_ui`类参照进度条实现绘制背景、按钮等操作接口** 
-
-<!-- more end -->
