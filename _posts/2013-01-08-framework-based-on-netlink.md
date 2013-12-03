@@ -7,16 +7,25 @@ tags: [linux, kernel, how-to]
 ---
 {% include heljoy/setup %}
 
+<p class="paragraph">
 netlink是linux内核提供的一种用户空间与内核通讯基础组件，基于网络实现，可实现多播、单播、组播复杂的通讯功能。内核驱动建立服务端，用户程序通过socket绑定服务端，可发送消息与接收消息，实现监听、系统调用等功能。其中generic netlink(genetlink)是基于netlink机制实现的一种通用协议，可直接使用到一般用户程序环境中。
+</p>
 
-<!-- more start -->
-本文实现的是一种通知机制，用户程序监听内核netlink创建的端口，不能通过端口发消息到内核。这种机制适用于报告系统硬件状态，如电池电量、温度，SIM卡移除等
+<!-- more -->
+<p class="paragraph">
+本文实现的是一种通知机制，用户程序监听内核netlink创建的端口，不能通过端口发消息到内核。这种机制适用于报告系统硬件状态，如电池电量、温度，SIM卡移除等，相对复杂的功能也可以以本文为框架参考下面的链接文章实现。
+</p>
 
 ## 1. NETLINK内核编码相关
 
+<p class="paragraph">
 本框架是基于netlink的一种通用协议generic netlink(genetlink)，并没有单独占用新的协议号，内核服务端部分注册genetlink接口、相关操作函数和指定数据传输格式。
+</p>
 
+<p class="paragraph">
 注册接口：用于通知内核有一个family添加，可提供服务
+</p>
+
 {% highlight c %}
 ret = genl_register_family(&detect_family);     //注册family
 if (ret != 0)
@@ -27,7 +36,10 @@ if (ret != 0)
         goto unreg_fam;
 {% endhighlight %}
 
-接口数据结构定义：family类型对应的操作接口，可定义多个，但cmd字段不同
+<p class="paragraph">
+接口数据结构定义：family类型对应的操作接口，可定义多个，但cmd字段不同，这里的cmd及其实现功能需要提供给用户程序。
+</p>
+
 {% highlight c %}
 static struct genl_ops user_pid_ops = {
         .cmd = 0x01,
@@ -38,7 +50,10 @@ static struct genl_ops user_pid_ops = {
 };
 {% endhighlight %}
 
+<p class="paragraph">
 操作接口用于响应消息，用户给内核发送命令时需指定命令号cmd，发送的内容格式为policy指定，其他字段程序中没用到。同一family可注册多个命令，不同命令对应各自的处理函数doit。
+</p>
+
 {% highlight c %}
 static struct genl_family detect_family = {
         .id = GENL_ID_GENERATE,
@@ -48,10 +63,15 @@ static struct genl_family detect_family = {
         .maxattr = DETECT_A_MAX,
 };
 {% endhighlight %}
-协议结构，使用genl接口的id统一为GENL_ID_GENERATE，name字段用于标识特定的family，用户程序通过比较该字段连接到family。
-此处用于响应用户消息的接口只接收用户进程的pid，之后内核会将消息发送到该pid进程
 
-内核消息发送接口：将指定消息发送到用户进程，消息是一个32位整数，消息的定义内核与用户程序要一致
+<p class="paragraph">
+协议结构，使用genl接口的id统一为GENL_ID_GENERATE，name字段用于标识特定的family，用户程序通过比较该字段连接到family。此处用于响应用户消息的接口只接收用户进程的pid，之后内核会将消息发送到该pid进程。
+</p>
+
+<p class="paragraph">
+内核消息发送接口：将指定消息发送到用户进程，消息是一个32位整数，消息的定义内核与用户程序要一致。下面代码用于内核发送消息到用户程序。
+</p>
+
 {% highlight c %}
 skb = genlmsg_new(size, GFP_KERNEL);    //申请发送数据缓冲
 if (skb == NULL)
@@ -78,13 +98,19 @@ if (genlmsg_end(skb, msg_head) < 0) {
 genlmsg_unicast(&init_net, skb, g_detect->user_pid);
 {% endhighlight %}
 
+<p class="paragraph">
 在建立socket连接后内核可随时向用户空间发送消息，用户程序调用recv接收。框架暂时没有使用多播、组播功能。
+</p>
 
 ## 2. NETLINK用户程序框架
 
+<p class="paragraph">
 基于NETLINK通讯的用户程序类似SOCKET程序，都是创建socket,绑定端口号，发送和接收数据等操作。框架中用户守护进程阻塞接收内核消息，再调用消息处理函数分发消息。
+</p>
 
-创建socket并绑定： 创建一个netlink类型的socket
+<p class="paragraph">
+创建socket并绑定： 创建一个netlink类型的socket，并绑定端口，这里与socket编程规则一致。
+</p>
 {% highlight c %}
 struct sockaddr_nl local;
 
@@ -100,9 +126,11 @@ if (bind(fd, (struct sockaddr *)&local, sizeof(local)) < 0)
 
 return fd;
 {% endhighlight %}
-创建NETLINK_GENERIC类型socket，绑定端口。
 
-查找DETECT_USB服务端，这部分属于genetlink公用部分。
+<p class="paragraph">
+查找DETECT_USB服务端，这部分属于genetlink公用部分，按下面流程一般不会出错。
+</p>
+
 {% highlight c %}
 /* Get family name */
 family_req.n.nlmsg_type = GENL_ID_CTRL;
@@ -133,10 +161,11 @@ na = (struct nlattr *)((char *)na + NLA_ALIGN(na->nla_len));
 if (na->nla_type == CTRL_ATTR_FAMILY_ID)
         id = *(__u16 *) NLA_DATA(na);
 {% endhighlight %}
-这里查找使用的字符串必须与内核中注册接口结构中定义的字符串相同，用于绑定到我们注册的接口。
 
+<p class="paragraph">
+这里查找使用的字符串必须与内核中注册接口结构中定义的字符串相同，用于绑定到我们内核中注册的接口，然后将自己的pid封装成消息发送到内核DETECT_USB family，内核解析出pid后用于报告USB状态到用户进程，如果用户进程由于未知原因停止运行，android init-server还会重新启动该进程，进程再一次将pid发送到内核family，内核还是能将USB状态报告到正确的位置了。
+</p>
 
-发送消息相关程序：用户程序初始化时运行一次，用于将自己的pid通知到内核
 {% highlight c %}
 /* Send command needed */
 req.n.nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
@@ -159,7 +188,10 @@ nladdr.nl_family = AF_NETLINK;
 sendto(sd, (char *)&req, req.n.nlmsg_len, 0, (struct sockaddr *)&nladdr, sizeof(nladdr));
 {% endhighlight %}
 
-接收消息相关接口：这里放在一个循环里来做，也可以用poll实现
+<p class="paragraph">
+用户程序主要的任务是接收内核报告的消息，解析消息含义，并转发到相关的处理函数。为提高效率可以使用poll接口等待内核消息。
+</p>
+
 {% highlight c %}
 rep_len = recv(sd, &ans, sizeof(ans), 0);  //阻塞接收内核消息
 if (ans.n.nlmsg_type == NLMSG_ERROR)
@@ -176,6 +208,6 @@ na = (struct nlattr *)GENLMSG_DATA(&ans);   //验证正确后做消息解析。
 
 ## 总结
 
+<p class="paragraph">
 上面实现了基于genetlink内核组件的内核消息单播框架，并不是一个完成的应用程序，这也是我在做netlink程序时认为最主要的内容，其实将内核与用户进程互发消息调试通过之后的事情就不与netlink相关了，知道这个框架能提供些什么服务，应用程序也好做扩展。
-
-<!-- more end -->
+</p>
