@@ -171,3 +171,230 @@ struct gpio_chip {
         unsigned                exported:1;
 };
 ```
+
+<p class="paragraph">
+上述结构实例表示一个GPIO pin，系统中每个GPIO pin都有一个实例。驱动中使用的GPIO编号首先转换成GPIO组号与组内序号，每组GPIO操作有关的寄存器位数一致，一般都是上下拉两位，输入输出两位，组内单个pin使用组起始编号加偏移就可以得到具体操作地址。系统中可供使用的GPIO API最终都会映射到结构的回调接口，具体可以查看内核代码driver/gpio/gpiolib.c。
+</p>
+
+    gpio_request---------------------->   chip->request
+    gpio_free------------------------->   chip->free
+    gpio_direction_input-------------->   chip->direction_input
+    gpio_direction_output------------->   chip->direction_output
+    gpio_get_value-------------------->   chip->get
+    gpio_set_value-------------------->   chip->set
+    gpio_to_irq----------------------->   chip->to_irq
+    
+<p class="paragraph">
+内核有专门的变量表示系统中所有可用的GPIO资源，数组的序号与我们之前定义的GPIO编号一致，GPIO驱动在系统启动加载时注册所有GPIO到该数组，注册时gpio_chip结构已经填充，包括组起始编号base，组内偏移以及回调接口。
+</p>
+
+```
+struct gpio_desc {
+        struct gpio_chip        *chip;
+        unsigned long           flags; /* 用于标识当前端口的状态：是否占用、输入输出、触发方式等 */
+};
+static struct gpio_desc gpio_desc[ARCH_NR_GPIOS];   /* 这个就是定义GPIO编号时指定的最大编号 */
+```
+
+## GPIO编号到物理地址映射
+
+<p class="paragraph">
+前面说到系统中GPIO编号是连续的，驱动在使用时通常以GPx(n)方式使用组名及组内序号索引，而硬件上不同组端口使用不同的寄存器区间控制，每组的端口数也可能都不相同。因此当驱动使用GPIO编号设置GPIO功能时，首先需要查找到GPIO所在组，同组内使用同一区间地址，再利用偏移与位宽就可以计算出该功能对应到的物理地址了。
+</p>
+
+```
+static struct samsung_gpio_chip exynos4212_gpios_1[] = {
+        {
+                .chip   = {
+                        .base   = EXYNOS4_GPA0(0),
+                        .ngpio  = EXYNOS4_GPIO_A0_NR,
+                        .label  = "GPA0",
+                },
+        }, {
+                .chip   = {
+                        .base   = EXYNOS4_GPA1(0),
+                        .ngpio  = EXYNOS4_GPIO_A1_NR,
+                        .label  = "GPA1",
+                },
+        }, {
+                .chip   = {
+                        .base   = EXYNOS4_GPB(0),
+                        .ngpio  = EXYNOS4_GPIO_B_NR,
+                        .label  = "GPB",
+                },
+        }, {
+...
+}
+```
+
+<p class="paragraph">
+结构<strong>samsung_gpio_chip</strong>是对gpio_chip的封装，包含组起始编号、组内端口数、组名等信息。<strong>exynos4212_gpios_1</strong>数组包含映射到地址区间一的所有gpio组，因此定义GPIO编号时最好按硬件安排顺序设置。在GPIO驱动初始化时samsung_gpiolib_init会添加chip到gpio_desc数组中。
+</p>
+
+```
+gpio_base1 = ioremap(EXYNOS4_PA_GPIO1, SZ_4K);     //寄存器区间一基址
+
+chip = exynos4212_gpios_1;                  //区间一GPIO组
+nr_chips = ARRAY_SIZE(exynos4212_gpios_1);  //区间一内的组数
+
+for (i = 0; i < nr_chips; i++, chip++) {    //设置组号与配置接口，后面使用的时候再回头看
+        if (!chip->config) {
+                chip->config = &exynos_gpio_cfg;
+                chip->group = group++;
+        }
+}
+/*添加区间一GPIO组到系统，4bit表示所有GPIO使用4位的GPXXCON设置端口功能*/
+samsung_gpiolib_add_4bit_chips(exynos4212_gpios_1, nr_chips, gpio_base1);
+```
+
+<p class="paragraph">
+前面讲到<strong>samsung_gpio_chip</strong>结构中每个chip表示一组，因此组号顺序递增很好理解，其是依照硬件安排编组，<strong>exynos_gpio_cfg</strong>接口在使用时再介绍，现在只需要了解每组<strong>chip->config</strong>都是调用这一接口，除非单独指定。重点在最后那个函数，主要意思就是将区间一内所有GPIO组添加到系统<strong>gpio_desc</strong>结构，配置这些GPIO的控制寄存器基址为gpio_base1，同一区间内一般每组GPIO占用的地址空间大小相同，再看看具体实现。
+</p>
+
+```
+static void __init samsung_gpiolib_add_4bit_chips(struct samsung_gpio_chip *chip,
+                                                  int nr_chips, void __iomem *base)
+{
+        int i;
+
+        for (i = 0 ; i < nr_chips; i++, chip++) {
+		/* 设置每组的input/output接口，注意这里是chip->chip */
+                chip->chip.direction_input = samsung_gpiolib_4bit_input;
+		/* 驱动引出的gpio_request_XXX接口调用对应到这里 */
+                chip->chip.direction_output = samsung_gpiolib_4bit_output;
+
+                if (!chip->config)
+                        chip->config = &samsung_gpio_cfgs[2];   //这个上面设置过，不用管
+                if (!chip->pm)
+                        chip->pm = __gpio_pm(&samsung_gpio_pm_4bit); //关于电源管理部分的
+                if ((base != NULL) && (chip->base == NULL))
+                        chip->base = base + ((i) * 0x20);      //GPIO组对应到控制寄存器地址，组间隔为0x20
+
+                samsung_gpiolib_add(chip);                  //还是三星自家的函数，需要确认
+        }
+}
+```
+
+<p class="paragraph">
+上述base表示区间一基址，<strong>chip->base</strong>表示组起始寄存器地址，每组寄存器占用0x20长度空间，这个需要结合硬件SPEC文档认真核对，如果组间隔大小有差异这里还需要手动调整。
+</p>
+
+<p class="paragraph">
+区间一中'A0、A1、B、C0、C1、D0、D1'是顺序排列，偏移量从'0x00'到'0xC0'依次递增，每组占用'0x20'长度。'F0、F1、F2、F3'偏移量从'0x180'开始，每组占用'0x20'长度，'J0、J1'偏移量从'0x240'开始，每组占用`0x20`长度，其中还包含有'ETC1'，由于系统中没有使用，上面没有实现。组起始地址核对SPEC文档确认，下面手动调整了部分地址。
+</p>
+
+```
+                        pr_err("unable to ioremap for gpio_base1\n");
+                        goto err_ioremap1;
+                }
++               exynos4212_gpios_1[7].base = gpio_base1 + 0x180; /* GPF0 */
++               exynos4212_gpios_1[8].base = gpio_base1 + 0x1A0; /* GPF1 */
++               exynos4212_gpios_1[9].base = gpio_base1 + 0x1C0; /* GPF2 */
++               exynos4212_gpios_1[10].base = gpio_base1 + 0x1E0; /* GPF3 */
++               exynos4212_gpios_1[11].base = gpio_base1 + 0x240; /* GPJ0 */
++               exynos4212_gpios_1[12].base = gpio_base1 + 0x260; /* GPJ1 */
+
+                chip = exynos4212_gpios_1;
+                nr_chips = ARRAY_SIZE(exynos4212_gpios_1);
+```
+
+<p class="paragraph">
+这样每组的chip->base就都为其控制寄存器基址了，chip->chip.base就是组编号，用同样的方法调整其余几组，使组起始地址与SPEC文档中描述的地址一致，这里不给出具体代码。再接着前面的samsung_gpiolib_add函数，这个函数太重要了，以至于我贴出了全部代码。
+</p>
+```
+static void __init samsung_gpiolib_add(struct samsung_gpio_chip *chip)
+{
+        struct gpio_chip *gc = &chip->chip;
+        int ret;
+
+        BUG_ON(!chip->base);
+        BUG_ON(!gc->label);
+        BUG_ON(!gc->ngpio);
+
+        spin_lock_init(&chip->lock);
+
+        if (!gc->direction_input)
+                gc->direction_input = samsung_gpiolib_2bit_input; //这两个在调用前已经赋值了
+        if (!gc->direction_output)
+                gc->direction_output = samsung_gpiolib_2bit_output;
+        if (!gc->set)
+                gc->set = samsung_gpiolib_set;    //set、get接口，对应gpio_set/get_value
+        if (!gc->get)
+                gc->get = samsung_gpiolib_get;
+
+#ifdef CONFIG_PM                                  //电源管理相关，暂时还是不看
+        if (chip->pm != NULL) {
+                if (!chip->pm->save || !chip->pm->resume)
+                        printk(KERN_ERR "gpio: %s has missing PM functions\n",
+                               gc->label);
+        } else
+                printk(KERN_ERR "gpio: %s has no PM function\n", gc->label);
+#endif
+
+        /* gpiochip_add() prints own failure message on error. */
+	    //系统gpiolib中的函数，将chip添加到gpio_desc数组中，gc->ngpio为新加的数组项数
+        ret = gpiochip_add(gc);      
+        if (ret >= 0)
+                s3c_gpiolib_track(chip);        //track相关，与驱动功能没关系
+}
+```
+<p class="paragraph">
+由于<strong>gpio_desc</strong>数组包含系统中所有可用GPIO端口，上述将gc安排在数组<strong>gpio_desc[gc->base...gc->base+gc->ngpio]</strong>，而<strong>gc->base</strong>就是组编号，因此直接通过GPXX(X)作为索引就能找到对应的数组项，数组项里保存了组寄存器起始地址以及组内序号，就很容易计算出具体pin的操作地址了。
+</p>
+
+## GPIO操作接口到寄存器配置流程示例
+
+<p class="paragraph">
+映射关系正确，底层GPIO驱动的移植基本完成了，为理清GPIO驱动流程下面给出一个简单的示例，以常用的简单接口gpio_set_value为例说明各接口以及回调接口的关系。
+</p>
+
+```
+#define gpio_set_value  __gpio_set_value         //直接使用底层接口
+
+void __gpio_set_value(unsigned gpio, int value)
+{
+        struct gpio_chip        *chip;
+
+        chip = gpio_to_chip(gpio);            //找到对应的chip结构，直接是gpio_desc[gpio]
+        /* Should be using gpio_set_value_cansleep() */
+        WARN_ON(chip->can_sleep);             //睡眠相关，新特性
+        trace_gpio_value(gpio, 0, value);     //trace相关，不理
+        if (test_bit(FLAG_OPEN_DRAIN,  &gpio_desc[gpio].flags))
+                _gpio_set_open_drain_value(gpio, chip, value);
+        else if (test_bit(FLAG_OPEN_SOURCE,  &gpio_desc[gpio].flags))
+                _gpio_set_open_source_value(gpio, chip, value);
+        else
+                chip->set(chip, gpio - chip->base, value);    //上面两个很少能使用到，跳过
+}
+```
+<p class="paragraph">
+有了上面的基础，可以很容易看出chip->set调用了samsung_gpiolib_set。
+</p>
+
+```
+static void samsung_gpiolib_set(struct gpio_chip *chip,
+                                unsigned offset, int value)
+{
+        struct samsung_gpio_chip *ourchip = to_samsung_gpio(chip);
+        void __iomem *base = ourchip->base;                 //组控制寄存器基址，关键部分
+        unsigned long flags;
+        unsigned long dat;
+
+        samsung_gpio_lock(ourchip, flags);
+
+        dat = __raw_readl(base + 0x04);    //0x04为GPXXDAT寄存器相对基址的偏移
+        dat &= ~(1 << offset);             //offset为端口在组内的序号，GPXXDAT中一位表示一个端口
+        if (value)
+                dat |= 1 << offset;        //根据value值设置需要写入的值
+        __raw_writel(dat, base + 0x04);
+
+        samsung_gpio_unlock(ourchip, flags);
+}
+```
+<p class="paragraph">
+这样就将对GPIO编号的操作对应到具体寄存器的设置了，用户并不需要关心完成这个设置都要操作哪个或哪几个寄存器，Linux的中驱动的分层抽象就是这么厉害，很多部分都是类似框架。
+</p>
+
+<p class="paragraph">
+<span class="label label-important">PS:</span> GPIO还有配置中断的相关寄存器，属于SOC中断部分，这部分后面有机会再单独介绍。
+</p>
