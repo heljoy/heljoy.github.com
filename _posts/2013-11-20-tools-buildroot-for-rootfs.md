@@ -31,21 +31,21 @@ Buildroot 是一种基于有序Makefile和patch等文件构建完整嵌入式Lin
 Buildroot有与linux相似的配置环境，可以使用menuconfig对各种选项配置，由于不同的平台构架编译相关的配置差异较大，配置前需要详细了解所使用的平台SOC相关信息，下面以手头上现有的ARM架构exynos5410开发板为例,说明平台相关的内容。
 </p>
 
-> 在Target Architecture选项里选择ARM(little endian)，我们使用的SOC属于小端，有关大小端的详细解释可以看[这里](http://en.wikipedia.org/wiki/Endianness)，如果你不清楚你使用的SOC，可以去供应商或ARM官网查询。
-> 
-> 接下来Target Architecture Variant选项使用cortex-A15，exynos5410是samsung最新推出的八核ARM处理器，采用大小核架构，4个A7针对日常应用，4个A15可满足大型游戏等复杂应用，提供低功耗高性能方案。
-> 
-> Target ABI是有关浮点模式的支持，这里选择EABI，也与工具链相关，VFP也支持VFPv5-D16，指令集用ARM标准。
-> 
-> 完成了与体系结构相关的配置接下来就轻松多了，在Build options项下，可以enable compiler cache提高编译速度，不过也可以不使用。不需要链接静态库，使用动态库放在制作的根文件系统里，各种小工具都编译成动态链接减小体积。是否在编译时添加调试信息以及GCC优化选项等最好不要打开如果没有使用到。
-> 
-> 由于是在x86环境编译ARM目标代码，需要使用交叉工具链。为配置方便可以使用Sourcery CodeBench ARM 2013.05，在External toolchain下以选择。为减小体积可以去掉不需要的locale支持，这里选择C en_US就可以。
-> 
-> 在System configuration里选择使用mdev管理设备，注意设置好调试串口和波特率。接下来还有kernel、bootloader等配置，我们有单独编译这两项，这里只用来生成根文件系统，有关busybox等工具配置可以使用默认。
-> 
-> 注意Filesystem images需要根据我们的内核配置以及uboot支持来设置，在我使用的开发板uboot加载内核与ramdisk时需要image header，内核支持initial RAM filesystem，这里使用cpio打包root filesystem并使用gzip压缩。
+- 在Target Architecture选项里选择ARM(little endian)，我们使用的SOC属于小端，有关大小端的详细解释可以看[这里](http://en.wikipedia.org/wiki/Endianness)，如果你不清楚你使用的SOC，可以去供应商或ARM官网查询。
+ 
+- 接下来Target Architecture Variant选项使用cortex-A15，exynos5410是samsung最新推出的八核ARM处理器，采用大小核架构，4个A7针对日常应用，4个A15可满足大型游戏等复杂应用，提供低功耗高性能方案。
+ 
+- Target ABI是有关浮点模式的支持，这里选择EABI，也与工具链相关，VFP也支持VFPv5-D16，指令集用ARM标准。
+ 
+- 完成了与体系结构相关的配置接下来就轻松多了，在Build options项下，可以enable compiler cache提高编译速度，不过也可以不使用。不需要链接静态库，使用动态库放在制作的根文件系统里，各种小工具都编译成动态链接减小体积。是否在编译时添加调试信息以及GCC优化选项等最好不要打开如果没有使用到。
+ 
+- 由于是在x86环境编译ARM目标代码，需要使用交叉工具链。为配置方便可以使用Sourcery CodeBench ARM 2013.05，在External toolchain下以选择。为减小体积可以去掉不需要的locale支持，这里选择C en_US就可以。
+ 
+- 在System configuration里选择使用mdev管理设备，注意设置好调试串口和波特率。接下来还有kernel、bootloader等配置，我们有单独编译这两项，这里只用来生成根文件系统，有关busybox等工具配置可以使用默认。
+ 
+- 注意Filesystem images需要根据我们的内核配置以及uboot支持来设置，在我使用的开发板uboot加载内核与ramdisk时需要image header，内核支持initial RAM filesystem，这里使用cpio打包root filesystem并使用gzip压缩。
 
-## cpio根文件系统分析
+## 根文件系统分析
 <p class="paragraph">
 如果不出意外，完成上面的配置后使用make命令就能生成一个xx.cpio.gz的映像文件，可配合内核启动到我们需要的调试模式。由于开发板上uboot需要image header才能正确处理文件，可以使用下面命令添加。
 </p>
